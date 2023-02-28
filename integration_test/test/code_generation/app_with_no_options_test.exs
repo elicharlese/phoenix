@@ -8,9 +8,10 @@ defmodule Phoenix.Integration.CodeGeneration.AppWithNoOptionsTest do
       {app_root_path, _} =
         generate_phoenix_app(tmp_dir, "phx_blog", [
           "--no-html",
-          "--no-webpack",
+          "--no-assets",
           "--no-ecto",
           "--no-gettext",
+          "--no-mailer",
           "--no-dashboard"
         ])
 
@@ -21,18 +22,20 @@ defmodule Phoenix.Integration.CodeGeneration.AppWithNoOptionsTest do
   end
 
   test "development workflow works as expected" do
-    with_installer_tmp("development_workflow", fn tmp_dir ->
+    with_installer_tmp("development_workflow", [autoremove?: false], fn tmp_dir ->
       {app_root_path, _} =
         generate_phoenix_app(tmp_dir, "phx_blog", [
-          "--no-webpack",
+          "--no-assets",
           "--no-ecto",
           "--no-gettext",
+          "--no-mailer",
           "--no-dashboard"
         ])
 
       assert_no_compilation_warnings(app_root_path)
 
-      File.touch!(Path.join(app_root_path, "lib/phx_blog_web/views/page_view.ex"), @epoch)
+      File.touch!(Path.join(app_root_path, "lib/phx_blog_web/components/core_components.ex"), @epoch)
+      File.touch!(Path.join(app_root_path, "lib/phx_blog_web/controllers/page_html.ex"), @epoch)
 
       spawn_link(fn ->
         run_phx_server(app_root_path)
@@ -43,12 +46,8 @@ defmodule Phoenix.Integration.CodeGeneration.AppWithNoOptionsTest do
       assert response.status_code == 200
       assert response.body =~ "PhxBlog"
 
-      assert File.stat!(Path.join(app_root_path, "lib/phx_blog_web/views/page_view.ex")) > @epoch
-
-      # Ensure /priv static files are copied
-      assert File.exists?(Path.join(app_root_path, "priv/static/js/phoenix.js"))
-
-      assert_passes_formatter_check(app_root_path)
+      assert File.stat!(Path.join(app_root_path, "lib/phx_blog_web/components/core_components.ex")) > @epoch
+      assert File.stat!(Path.join(app_root_path, "lib/phx_blog_web/controllers/page_html.ex")) > @epoch
       assert_tests_pass(app_root_path)
     end)
   end

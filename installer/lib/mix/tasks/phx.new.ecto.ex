@@ -28,6 +28,7 @@ defmodule Mix.Tasks.Phx.New.Ecto do
         * `postgres` - via https://github.com/elixir-ecto/postgrex
         * `mysql` - via https://github.com/elixir-ecto/myxql
         * `mssql` - via https://github.com/livehelpnow/tds
+        * `sqlite3` - via https://github.com/elixir-sqlite/ecto_sqlite3
 
       Please check the driver docs for more information
       and requirements. Defaults to "postgres".
@@ -37,11 +38,11 @@ defmodule Mix.Tasks.Phx.New.Ecto do
 
   ## Examples
 
-      mix phx.new.ecto hello_ecto
+      $ mix phx.new.ecto hello_ecto
 
   Is equivalent to:
 
-      mix phx.new.ecto hello_ecto --module HelloEcto
+      $ mix phx.new.ecto hello_ecto --module HelloEcto
   """
 
   @shortdoc "Creates a new Ecto project within an umbrella project"
@@ -49,14 +50,16 @@ defmodule Mix.Tasks.Phx.New.Ecto do
   use Mix.Task
   import Phx.New.Generator
 
+  @impl true
   def run([]) do
     Mix.Tasks.Help.run(["phx.new.ecto"])
   end
+
   def run([path | _] = args) do
     unless in_umbrella?(path) do
       Mix.raise "The ecto task can only be run within an umbrella's apps directory"
     end
 
-    Mix.Tasks.Phx.New.run(args ++ ["--no-webpack", "--ecto"], Phx.New.Ecto, :app_path)
+    Mix.Tasks.Phx.New.run(args ++ ["--no-assets", "--ecto"], Phx.New.Ecto, :app_path)
   end
 end

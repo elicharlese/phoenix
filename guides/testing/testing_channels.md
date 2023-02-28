@@ -1,10 +1,10 @@
 # Testing Channels
 
-> **Requirement**: This guide expects that you have gone through the introductory guides and got a Phoenix application up and running.
+> **Requirement**: This guide expects that you have gone through the [introductory guides](installation.html) and got a Phoenix application [up and running](up_and_running.html).
 
-> **Requirement**: This guide expects that you have gone through [the Introduction to Testing guide](testing.html).
+> **Requirement**: This guide expects that you have gone through the [Introduction to Testing guide](testing.html).
 
-> **Requirement**: This guide expects that you have gone through [the Channels guide](channels.html).
+> **Requirement**: This guide expects that you have gone through the [Channels guide](channels.html).
 
 In the Channels guide, we saw that a "Channel" is a layered system with different components. Given this, there would be cases when writing unit tests for our Channel functions may not be enough. We may want to verify that its different moving parts are working together as we expect. This integration testing would assure us that we correctly defined our channel route, the channel module, and its callbacks; and that the lower-level layers such as the PubSub and Transport are configured correctly and are working as intended.
 
@@ -16,10 +16,24 @@ As we progress through this guide, it would help to have a concrete example we c
 $ mix phx.gen.channel Room
 * creating lib/hello_web/channels/room_channel.ex
 * creating test/hello_web/channels/room_channel_test.exs
+* creating test/support/channel_case.ex
 
-Add the channel to your `lib/hello_web/channels/user_socket.ex` handler, for example:
+The default socket handler - HelloWeb.UserSocket - was not found.
 
-    channel "room:lobby", HelloWeb.RoomChannel
+Do you want to create it? [Yn]  
+* creating lib/hello_web/channels/user_socket.ex
+* creating assets/js/user_socket.js
+
+Add the socket handler to your `lib/hello_web/endpoint.ex`, for example:
+
+    socket "/socket", HelloWeb.UserSocket,
+      websocket: true,
+      longpoll: false
+
+For the front-end integration, you need to import the `user_socket.js`
+in your `assets/js/app.js` file:
+
+    import "./user_socket.js"
 ```
 
 This creates a channel, its test and instructs us to add a channel route in `lib/hello_web/channels/user_socket.ex`. It is important to add the channel route or our channel won't function at all!
@@ -43,21 +57,21 @@ defmodule HelloWeb.ChannelCase do
     quote do
       # Import conveniences for testing with channels
       import Phoenix.ChannelTest
+      import HelloWeb.ChannelCase
 
       # The default endpoint for testing
       @endpoint HelloWeb.Endpoint
     end
   end
 
-  setup tags do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Demo.Repo, shared: not tags[:async])
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+  setup _tags do
+    Hello.DataCase.setup_sandbox(tags)
     :ok
   end
 end
 ```
 
-It is very straight-forward. It sets up a case template that imports all of `Phoenix.ChannelTest` on use. In the `setup` block, it starts the SQL Sandbox, which we discussed [in the Testing Contexts guide](testing_contexts.html).
+It is very straight-forward. It sets up a case template that imports all of `Phoenix.ChannelTest` on use. In the `setup` block, it starts the SQL Sandbox, which we discussed in the [Testing contexts guide](testing_contexts.html).
 
 ## Subscribe and joining
 
@@ -69,7 +83,7 @@ First off, is the setup block:
 ```elixir
 setup do
   {:ok, _, socket} =
-    UserSocket
+    HelloWeb.UserSocket
     |> socket("user_id", %{some: :assign})
     |> subscribe_and_join(RoomChannel, "room:lobby")
 
@@ -77,7 +91,7 @@ setup do
 end
 ```
 
-The `setup` block sets up a `Phoenix.Socket` based on the `UserSocket` module, which you can find at "lib/hello_web/channels/user_socket.ex". Then it says we want to subscribe and join the `RoomChannel`, accessible as "room:lobby" in the `UserSocket`. At the end of the test, we return the `%{socket: socket}` as metadata, so we can re-use it on every test.
+The `setup` block sets up a `Phoenix.Socket` based on the `UserSocket` module, which you can find at `lib/hello_web/channels/user_socket.ex`. Then it says we want to subscribe and join the `RoomChannel`, accessible as `"room:lobby"` in the `UserSocket`. At the end of the test, we return the `%{socket: socket}` as metadata, so we can reuse it on every test.
 
 In a nutshell, `subscribe_and_join/3` emulates the client joining a channel and subscribes the test process to the given topic. This is a necessary step since clients need to join a channel before they can send and receive events on that channel.
 
@@ -149,4 +163,4 @@ Since the `handle_out/3` event is only triggered when we call `broadcast/3` from
 
 The line `broadcast_from!(socket, "broadcast", %{"some" => "data"})` will trigger our `handle_out/3` callback above which pushes the same event and payload back to the client. To test this, we do `assert_push "broadcast", %{"some" => "data"}`.
 
-That's it. Now you are ready to develop and fully test realtime applications. To learn more about other functionality provided when testing channels, check out the documentation for [`Phoenix.ChannelTest`](https://hexdocs.pm/phoenix/Phoenix.ChannelTest.html).
+That's it. Now you are ready to develop and fully test real-time applications. To learn more about other functionality provided when testing channels, check out the documentation for [`Phoenix.ChannelTest`](https://hexdocs.pm/phoenix/Phoenix.ChannelTest.html).

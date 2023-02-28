@@ -2,8 +2,8 @@ defmodule Phoenix.Controller.Pipeline do
   @moduledoc false
 
   @doc false
-  defmacro __using__(opts) do
-    quote bind_quoted: [opts: opts] do
+  defmacro __using__(_) do
+    quote do
       @behaviour Plug
 
       require Phoenix.Endpoint
@@ -11,7 +11,6 @@ defmodule Phoenix.Controller.Pipeline do
 
       Module.register_attribute(__MODULE__, :plugs, accumulate: true)
       @before_compile Phoenix.Controller.Pipeline
-      @phoenix_log_level Keyword.get(opts, :log, :debug)
       @phoenix_fallback :unregistered
 
       @doc false
@@ -177,12 +176,31 @@ defmodule Phoenix.Controller.Pipeline do
   defmacro plug(plug, opts), do: plug(plug, opts, true, __CALLER__)
 
   defp plug(plug, opts, guards, caller) do
-    plug = Macro.expand(plug, %{caller | function: {:init, 1}})
+    runtime? = Phoenix.plug_init_mode() == :runtime
+
+    plug =
+      if runtime? do
+        expand_alias(plug, caller)
+      else
+        plug
+      end
+
+    opts =
+      if runtime? and Macro.quoted_literal?(opts) do
+        Macro.prewalk(opts, &expand_alias(&1, caller))
+      else
+        opts
+      end
 
     quote do
       @plugs {unquote(plug), unquote(opts), unquote(escape_guards(guards))}
     end
   end
+
+  defp expand_alias({:__aliases__, _, _} = alias, env),
+    do: Macro.expand(alias, %{env | function: {:init, 1}})
+
+  defp expand_alias(other, _env), do: other
 
   defp escape_guards({pre_expanded, _, [_ | _]} = node)
        when pre_expanded in [:@, :__aliases__],

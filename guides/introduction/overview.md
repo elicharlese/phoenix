@@ -12,6 +12,8 @@ The guides that you are currently looking at provide an overview of all parts th
 
   * Guides - in-depth guides covering the main components in Phoenix and Phoenix applications
 
+  * Authentication - in-depth guide covering how to use `mix phx.gen.auth`
+
   * Real-time components - in-depth guides covering Phoenix's built-in real-time components
 
   * Testing - in-depth guides about testing
@@ -20,8 +22,8 @@ The guides that you are currently looking at provide an overview of all parts th
 
   * How-to's - a collection of articles on how to achieve certain things with Phoenix
 
-If you would prefer to read these guides as an EPUB [click here!](Phoenix.epub)
+If you would prefer to read these guides as an EPUB, [click here!](Phoenix.epub)
 
-Note these guides are not a step-by-step introduction to Phoenix. If you want a more structured approach to learning the framework, we have a large community and many books, courses, and screencasts available. See [our community page](community.html) for a complete list.
+Note, these guides are not a step-by-step introduction to Phoenix. If you want a more structured approach to learning the framework, we have a large community and many books, courses, and screencasts available. See [our community page](community.html) for a complete list.
 
 [Let's get Phoenix installed](installation.html).

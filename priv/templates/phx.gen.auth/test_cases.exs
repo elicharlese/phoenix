@@ -66,7 +66,7 @@
       too_long = String.duplicate("db", 100)
       {:error, changeset} = <%= inspect context.alias %>.register_<%= schema.singular %>(%{email: too_long, password: too_long})
       assert "should be at most 160 character(s)" in errors_on(changeset).email
-      assert "should be at most 80 character(s)" in errors_on(changeset).password
+      assert "should be at most 72 character(s)" in errors_on(changeset).password
     end
 
     test "validates email uniqueness" do
@@ -81,7 +81,7 @@
 
     test "registers <%= schema.plural %> with a hashed password" do
       email = unique_<%= schema.singular %>_email()
-      {:ok, <%= schema.singular %>} = <%= inspect context.alias %>.register_<%= schema.singular %>(%{email: email, password: valid_<%= schema.singular %>_password()})
+      {:ok, <%= schema.singular %>} = <%= inspect context.alias %>.register_<%= schema.singular %>(valid_<%= schema.singular %>_attributes(email: email))
       assert <%= schema.singular %>.email == email
       assert is_binary(<%= schema.singular %>.hashed_password)
       assert is_nil(<%= schema.singular %>.confirmed_at)
@@ -100,7 +100,10 @@
       password = valid_<%= schema.singular %>_password()
 
       changeset =
-        <%= inspect context.alias %>.change_<%= schema.singular %>_registration(%<%= inspect schema.alias %>{}, %{"email" => email, "password" => password})
+        <%= inspect context.alias %>.change_<%= schema.singular %>_registration(
+          %<%= inspect schema.alias %>{},
+          valid_<%= schema.singular %>_attributes(email: email, password: password)
+        )
 
       assert changeset.valid?
       assert get_change(changeset, :email) == email
@@ -144,9 +147,9 @@
 
     test "validates email uniqueness", %{<%= schema.singular %>: <%= schema.singular %>} do
       %{email: email} = <%= schema.singular %>_fixture()
+      password = valid_<%= schema.singular %>_password()
 
-      {:error, changeset} =
-        <%= inspect context.alias %>.apply_<%= schema.singular %>_email(<%= schema.singular %>, valid_<%= schema.singular %>_password(), %{email: email})
+      {:error, changeset} = <%= inspect context.alias %>.apply_<%= schema.singular %>_email(<%= schema.singular %>, password, %{email: email})
 
       assert "has already been taken" in errors_on(changeset).email
     end
@@ -166,7 +169,7 @@
     end
   end
 
-  describe "deliver_update_email_instructions/3" do
+  describe "deliver_<%= schema.singular %>_update_email_instructions/3" do
     setup do
       %{<%= schema.singular %>: <%= schema.singular %>_fixture()}
     end
@@ -174,7 +177,7 @@
     test "sends token through notification", %{<%= schema.singular %>: <%= schema.singular %>} do
       token =
         extract_<%= schema.singular %>_token(fn url ->
-          <%= inspect context.alias %>.deliver_update_email_instructions(<%= schema.singular %>, "current@example.com", url)
+          <%= inspect context.alias %>.deliver_<%= schema.singular %>_update_email_instructions(<%= schema.singular %>, "current@example.com", url)
         end)
 
       {:ok, token} = Base.url_decode64(token, padding: false)
@@ -192,7 +195,7 @@
 
       token =
         extract_<%= schema.singular %>_token(fn url ->
-          <%= inspect context.alias %>.deliver_update_email_instructions(%{<%= schema.singular %> | email: email}, <%= schema.singular %>.email, url)
+          <%= inspect context.alias %>.deliver_<%= schema.singular %>_update_email_instructions(%{<%= schema.singular %> | email: email}, <%= schema.singular %>.email, url)
         end)
 
       %{<%= schema.singular %>: <%= schema.singular %>, token: token, email: email}
@@ -270,7 +273,7 @@
       {:error, changeset} =
         <%= inspect context.alias %>.update_<%= schema.singular %>_password(<%= schema.singular %>, valid_<%= schema.singular %>_password(), %{password: too_long})
 
-      assert "should be at most 80 character(s)" in errors_on(changeset).password
+      assert "should be at most 72 character(s)" in errors_on(changeset).password
     end
 
     test "validates current password", %{<%= schema.singular %>: <%= schema.singular %>} do
@@ -345,11 +348,11 @@
     end
   end
 
-  describe "delete_session_token/1" do
+  describe "delete_<%= schema.singular %>_session_token/1" do
     test "deletes the token" do
       <%= schema.singular %> = <%= schema.singular %>_fixture()
       token = <%= inspect context.alias %>.generate_<%= schema.singular %>_session_token(<%= schema.singular %>)
-      assert <%= inspect context.alias %>.delete_session_token(token) == :ok
+      assert <%= inspect context.alias %>.delete_<%= schema.singular %>_session_token(token) == :ok
       refute <%= inspect context.alias %>.get_<%= schema.singular %>_by_session_token(token)
     end
   end
@@ -373,7 +376,7 @@
     end
   end
 
-  describe "confirm_<%= schema.singular %>/2" do
+  describe "confirm_<%= schema.singular %>/1" do
     setup do
       <%= schema.singular %> = <%= schema.singular %>_fixture()
 
@@ -476,7 +479,7 @@
     test "validates maximum values for password for security", %{<%= schema.singular %>: <%= schema.singular %>} do
       too_long = String.duplicate("db", 100)
       {:error, changeset} = <%= inspect context.alias %>.reset_<%= schema.singular %>_password(<%= schema.singular %>, %{password: too_long})
-      assert "should be at most 80 character(s)" in errors_on(changeset).password
+      assert "should be at most 72 character(s)" in errors_on(changeset).password
     end
 
     test "updates the password", %{<%= schema.singular %>: <%= schema.singular %>} do
@@ -492,7 +495,7 @@
     end
   end
 
-  describe "inspect/2" do
+  describe "inspect/2 for the <%= inspect schema.alias %> module" do
     test "does not include password" do
       refute inspect(%<%= inspect schema.alias %>{password: "123456"}) =~ "password: \"123456\""
     end

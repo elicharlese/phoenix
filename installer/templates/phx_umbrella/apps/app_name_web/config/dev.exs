@@ -3,22 +3,18 @@
 #
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we use it
-# with webpack to recompile .js and .css sources.
+# with esbuild to bundle .js and .css sources.
 config :<%= @web_app_name %>, <%= @endpoint_module %>,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}, port: 4000],
-  debug_errors: true,
-  code_reloader: true,
   check_origin: false,
-  watchers: <%= if @webpack do %>[
-    node: [
-      "node_modules/webpack/bin/webpack.js",
-      "--mode",
-      "development",
-      "--watch-stdin",
-      cd: Path.expand("../apps/<%= @web_app_name %>/assets", __DIR__)
-    ]
+  code_reloader: true,
+  debug_errors: true,
+  secret_key_base: "<%= @secret_key_base_dev %>",
+  watchers: <%= if @assets do %>[
+    esbuild: {Esbuild, :install_and_run, [:default, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:default, ~w(--watch)]}
   ]<% else %>[]<% end %>
 
 # ## SSL Support
@@ -29,7 +25,6 @@ config :<%= @web_app_name %>, <%= @endpoint_module %>,
 #
 #     mix phx.gen.cert
 #
-# Note that this task requires Erlang/OTP 20 or later.
 # Run `mix help phx.gen.cert` for more information.
 #
 # The `http:` config above can be replaced with:
@@ -51,7 +46,9 @@ config :<%= @web_app_name %>, <%= @endpoint_module %>,
     patterns: [
       ~r"priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",<%= if @gettext do %>
       ~r"priv/gettext/.*(po)$",<% end %>
-      ~r"lib/<%= @web_app_name %>/(live|views)/.*(ex)$",
-      ~r"lib/<%= @web_app_name %>/templates/.*(eex)$"
+      ~r"lib/<%= @web_app_name %>/(controllers|live|components)/.*(ex|heex)$"
     ]
   ]<% end %>
+
+# Enable dev routes for dashboard and mailbox
+config :<%= @web_app_name %>, dev_routes: true

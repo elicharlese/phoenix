@@ -31,7 +31,7 @@ defines a `metrics/0` function, which returns a list of
 that you define for your application.
 
 By default, the supervisor also starts
-[`:telemetry_poller`](http://hexdocs.pm/telemetry_poller).
+[`:telemetry_poller`](https://hexdocs.pm/telemetry_poller).
 By simply adding `:telemetry_poller` as a dependency, you
 can receive VM-related events on a specified interval.
 
@@ -39,8 +39,8 @@ If you are coming from an older version of Phoenix, install
 the `:telemetry_metrics` and `:telemetry_poller` packages:
 
 ```elixir
-{:telemetry_metrics, "~> 0.4"},
-{:telemetry_poller, "~> 0.4"}
+{:telemetry_metrics, "~> 0.6"},
+{:telemetry_poller, "~> 1.0"}
 ```
 
 and create your Telemetry supervisor at
@@ -101,8 +101,8 @@ Then add to your main application's supervision tree
 
 ```elixir
 children = [
-  MyApp.Repo,
   MyAppWeb.Telemetry,
+  MyApp.Repo,
   MyAppWeb.Endpoint,
   ...
 ]
@@ -111,7 +111,7 @@ children = [
 ## Telemetry Events
 
 Many Elixir libraries (including Phoenix) are already using
-the [`:telemetry`](http://hexdocs.pm/telemetry) package as a
+the [`:telemetry`](https://hexdocs.pm/telemetry) package as a
 way to give users more insight into the behavior of their
 applications, by emitting events at key moments in the
 application lifecycle.
@@ -124,7 +124,7 @@ A Telemetry event is made up of the following:
   * `measurements` - A map of atom keys (e.g. `:duration`)
     and numeric values.
 
-  * `metadata` - A map of key/value pairs that can be used
+  * `metadata` - A map of key-value pairs that can be used
     for tagging metrics.
 
 ### A Phoenix Example
@@ -157,7 +157,7 @@ A full list of all Phoenix telemetry events can be found in `Phoenix.Logger`
 > specific name, providing a view of the system's behaviour
 > over time.
 >
-> &#x2015; `Telemetry.Metrics`
+> ― `Telemetry.Metrics`
 
 The Telemetry.Metrics package provides a common interface
 for defining metrics. It exposes a set of [five metric type functions](https://hexdocs.pm/telemetry_metrics/Telemetry.Metrics.html#module-metrics) that are responsible for structuring a given Telemetry event as a particular measurement.
@@ -180,7 +180,7 @@ or you could use a distribution metric to see how many
 requests were completed in particular time buckets:
 
 ```elixir
-Telemetry.Metrics.distribution("phoenix.endpoint.stop.duration", buckets: [100, 200, 300])
+Telemetry.Metrics.distribution("phoenix.endpoint.stop.duration")
 ```
 
 This ability to introspect HTTP requests is really powerful --
@@ -204,14 +204,13 @@ and database layers using the same tools.
 
 Here is an example of a Telemetry event executed by Ecto when an Ecto repository starts:
 
-* `[:ecto, :repo, :init]` - dispatched by
-  `Ecto.Repo.Supervisor`
+* `[:ecto, :repo, :init]` - dispatched by `Ecto.Repo`
 
   * Measurement: `%{system_time: native_time}`
 
   * Metadata: `%{repo: Ecto.Repo, opts: Keyword.t()}`
 
-This means that whenever the `Ecto.Repo.Supervisor` starts, it will emit an event, via `:telemetry`,
+This means that whenever the `Ecto.Repo` starts, it will emit an event, via `:telemetry`,
 with a measurement of the time at start-up.
 
 ```elixir
@@ -233,8 +232,7 @@ Or you could use the `Telemetry.Metrics.distribution/2` function to define a his
 
 ```elixir
 Telemetry.Metrics.distribution("my_app.repo.query.queue_time",
-  unit: {:native, :millisecond},
-  buckets: [10, 50, 100]
+  unit: {:native, :millisecond}
 )
 ```
 
@@ -420,7 +418,7 @@ the previous example.
 defp live_view_metric_tag_values(metadata) do
   metadata
   |> Map.put(:view, metadata.socket.view)
-  |> Map.put(:connected?, metadata.socket.connected?)
+  |> Map.put(:connected?, Phoenix.LiveView.connected?(metadata.socket))
 end
 ```
 
@@ -437,11 +435,11 @@ convert the `connected?` boolean into human readable text.
 defp live_view_metric_tag_values(metadata) do
   metadata
   |> Map.put(:view, inspect(metadata.socket.view))
-  |> Map.put(:connected?, get_connection_status(metadata.socket))
+  |> Map.put(:connected?, get_connection_status(Phoenix.LiveView.connected?(metadata.socket)))
 end
 
-defp get_connection_status(%{connected?: true}), do: "Connected"
-defp get_connection_status(%{connected?: false}), do: "Disconnected"
+defp get_connection_status(true), do: "Connected"
+defp get_connection_status(false), do: "Disconnected"
 ```
 
 Now the value label will be rendered like `"Phoenix.LiveDashboard.MetricsLive
@@ -451,12 +449,11 @@ Hopefully, this gives you some inspiration on how to use the `:tag_values`
 option. Just remember to keep this function fast since it is called on every
 event.
 
-
 ## Periodic measurements
 
-You might want to periodically measure key values within
+You might want to periodically measure key-value pairs within
 your application. Fortunately the
-[`:telemetry_poller`](http://hexdocs.pm/telemetry_poller)
+[`:telemetry_poller`](https://hexdocs.pm/telemetry_poller)
 package provides a mechanism for custom measurements,
 which is useful for retrieving process information or for
 performing custom measurements periodically.
@@ -520,7 +517,8 @@ libraries currently emitting `:telemetry` events.
 Library authors are actively encouraged to send a PR adding
 their own (in alphabetical order, please):
 
-* [Absinthe](https://hexdocs.pm/absinthe) - Coming Soon!
+* [Absinthe](https://hexdocs.pm/absinthe) - [Events](https://hexdocs.pm/absinthe/telemetry.html)
+* [Ash Framework](https://hexdocs.pm/ash) - [Events](https://hexdocs.pm/ash/monitoring.html)
 * [Broadway](https://hexdocs.pm/broadway) - [Events](https://hexdocs.pm/broadway/Broadway.html#module-telemetry)
 * [Ecto](https://hexdocs.pm/ecto) - [Events](https://hexdocs.pm/ecto/Ecto.Repo.html#module-telemetry-events)
 * [Oban](https://hexdocs.pm/oban) - [Events](https://hexdocs.pm/oban/Oban.Telemetry.html)
@@ -532,7 +530,7 @@ their own (in alphabetical order, please):
 
 If you need custom metrics and instrumentation in your
 application, you can utilize the `:telemetry` package
-(https://hexdocs.pm/telemetry) just like your favorite
+(<https://hexdocs.pm/telemetry>) just like your favorite
 frameworks and libraries.
 
 Here is an example of a simple GenServer that emits telemetry
@@ -666,12 +664,12 @@ children = [
 Now start an IEx session and call the server:
 
 ```elixir
-iex(1)> MyApp.MyServer.call!
+iex> MyApp.MyServer.call!
 ```
 
 and you should see something like the following output:
 
-```elixir
+```text
 [Telemetry.Metrics.ConsoleReporter] Got new event!
 Event name: my_app.my_server.call.stop
 All measurements: %{duration: 4000}

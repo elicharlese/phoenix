@@ -5,12 +5,15 @@ defmodule <%= @app_module %>.Application do
 
   use Application
 
+  @impl true
   def start(_type, _args) do
     children = [<%= if @ecto do %>
       # Start the Ecto repository
       <%= @app_module %>.Repo,<% end %>
       # Start the PubSub system
-      {Phoenix.PubSub, name: <%= @app_module %>.PubSub}
+      {Phoenix.PubSub, name: <%= @app_module %>.PubSub}<%= if @mailer do %>,
+      # Start Finch
+      {Finch, name: <%= @app_module %>.Finch}<% end %>
       # Start a worker by calling: <%= @app_module %>.Worker.start_link(arg)
       # {<%= @app_module %>.Worker, arg}
     ]

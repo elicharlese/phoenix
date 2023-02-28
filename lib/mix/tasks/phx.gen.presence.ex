@@ -4,8 +4,8 @@ defmodule Mix.Tasks.Phx.Gen.Presence do
   @moduledoc """
   Generates a Presence tracker.
 
-      mix phx.gen.presence
-      mix phx.gen.presence MyPresence
+      $ mix phx.gen.presence
+      $ mix phx.gen.presence MyPresence
 
   The argument, which defaults to `Presence`, defines the module name of the
   Presence tracker.
@@ -51,7 +51,7 @@ defmodule Mix.Tasks.Phx.Gen.Presence do
         ]
 
     You're all set! See the Phoenix.Presence docs for more details:
-    http://hexdocs.pm/phoenix/Phoenix.Presence.html
+    https://hexdocs.pm/phoenix/Phoenix.Presence.html
     """
   end
 

@@ -142,7 +142,7 @@ defmodule Mix.Tasks.Phx.Gen.SchemaTest do
 
   test "generates unique indices" , config do
     in_tmp_project config.test, fn ->
-      Gen.Schema.run(~w(Blog.Post posts title:unique unique_int:integer:unique))
+      Gen.Schema.run(~w(Blog.Post posts title:unique secret:redact unique_int:integer:unique))
       assert [migration] = Path.wildcard("priv/repo/migrations/*_create_posts.exs")
 
       assert_file migration, fn file ->
@@ -150,6 +150,7 @@ defmodule Mix.Tasks.Phx.Gen.SchemaTest do
         assert file =~ "create table(:posts) do"
         assert file =~ "add :title, :string"
         assert file =~ "add :unique_int, :integer"
+        assert file =~ "add :secret, :string"
         assert file =~ "create unique_index(:posts, [:title])"
         assert file =~ "create unique_index(:posts, [:unique_int])"
       end
@@ -159,6 +160,7 @@ defmodule Mix.Tasks.Phx.Gen.SchemaTest do
         assert file =~ "schema \"posts\" do"
         assert file =~ "field :title, :string"
         assert file =~ "field :unique_int, :integer"
+        assert file =~ "field :secret, :string, redact: true"
       end
     end
   end
@@ -252,6 +254,21 @@ defmodule Mix.Tasks.Phx.Gen.SchemaTest do
         assert file =~ "create table(:posts, primary_key: false) do"
         assert file =~ "add :id, :binary_id, primary_key: true"
         assert file =~ "add :user_id, references(:users, on_delete: :nothing, type: :binary_id)"
+      end
+    end
+  end
+
+  test "generates schema and migration with prefix", config do
+    in_tmp_project config.test, fn ->
+      Gen.Schema.run(~w(Blog.Post posts title --prefix cms))
+
+      assert_file "lib/phoenix/blog/post.ex", fn file ->
+        assert file =~ "@schema_prefix :cms"
+      end
+
+      assert [migration] = Path.wildcard("priv/repo/migrations/*_create_posts.exs")
+      assert_file migration, fn file ->
+        assert file =~ "create table(:posts, prefix: :cms) do"
       end
     end
   end

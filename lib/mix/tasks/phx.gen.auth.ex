@@ -4,47 +4,61 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
   @moduledoc """
   Generates authentication logic for a resource.
 
-      mix phx.gen.auth Accounts User users
+      $ mix phx.gen.auth Accounts User users
 
   The first argument is the context module followed by the schema module
   and its plural name (used as the schema table name).
 
-  Additional information is available in the
+  Additional information and security considerations are detailed in the
   [`mix phx.gen.auth` guide](mix_phx_gen_auth.html).
 
   ## Password hashing
 
   The password hashing mechanism defaults to `bcrypt` for
   Unix systems and `pbkdf2` for Windows systems. Both
-  systems use [the Comeonin interface](https://hexdocs.pm/comeonin/).
+  systems use the [Comeonin interface](https://hexdocs.pm/comeonin/).
 
-  The password hashing mechanism can be overriden with the
+  The password hashing mechanism can be overridden with the
   `--hashing-lib` option. The following values are supported:
 
     * `bcrypt` - [bcrypt_elixir](https://hex.pm/packages/bcrypt_elixir)
     * `pbkdf2` - [pbkdf2_elixir](https://hex.pm/packages/pbkdf2_elixir)
     * `argon2` - [argon2_elixir](https://hex.pm/packages/argon2_elixir)
 
+  We recommend developers to consider using `argon2`, which
+  is the most robust of all 3. The downside is that `argon2`
+  is quite CPU and memory intensive, and you will need more
+  powerful instances to run your applications on.
+
   For more information about choosing these libraries, see the
   [Comeonin project](https://github.com/riverrun/comeonin).
 
   ## Web namespace
 
-  By default, the controllers and view will be namespaced by the schema name.
+  By default, the controllers and HTML view will be namespaced by the schema name.
   You can customize the web module namespace by passing the `--web` flag with a
   module name, for example:
 
-      mix phx.gen.auth Accounts User users --web Warehouse
+      $ mix phx.gen.auth Accounts User users --web Warehouse
 
-  Which would generate the controllers, views, templates and associated tests in nested in the `MyAppWeb.Warehouse` namespace:
+  Which would generate the controllers, views, templates and associated tests nested in the `MyAppWeb.Warehouse` namespace:
 
     * `lib/my_app_web/controllers/warehouse/user_auth.ex`
     * `lib/my_app_web/controllers/warehouse/user_confirmation_controller.ex`
-    * `lib/my_app_web/views/warehouse/user_confirmation_view.ex`
-    * `lib/my_app_web/templates/warehouse/user_confirmation/new.html.eex`
+    * `lib/my_app_web/controllers/warehouse/user_confirmation_html.ex`
+    * `lib/my_app_web/controllers/warehouse/user_confirmation_html/new.html.heex`
     * `test/my_app_web/controllers/warehouse/user_auth_test.exs`
     * `test/my_app_web/controllers/warehouse/user_confirmation_controller_test.exs`
     * and so on...
+
+  ## Multiple invocations
+
+  You can invoke this generator multiple times. This is typically useful
+  if you have distinct resources that go through distinct authentication
+  workflows:
+
+      $ mix phx.gen.auth Store User users
+      $ mix phx.gen.auth Backoffice Admin admins
 
   ## Binary ids
 
@@ -70,7 +84,7 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
   the plural name provided for the resource. To customize this value,
   a `--table` option may be provided. For example:
 
-      mix phx.gen.auth Accounts User users --table accounts_users
+      $ mix phx.gen.auth Accounts User users --table accounts_users
 
   This will cause the generated tables to be named `"accounts_users"` and `"accounts_users_tokens"`.
   """
@@ -81,10 +95,18 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
   alias Mix.Tasks.Phx.Gen
   alias Mix.Tasks.Phx.Gen.Auth.{HashingLibrary, Injector, Migration}
 
-  @switches [web: :string, binary_id: :boolean, hashing_lib: :string, table: :string]
+  @switches [
+    web: :string,
+    binary_id: :boolean,
+    hashing_lib: :string,
+    table: :string,
+    merge_with_existing_context: :boolean,
+    prefix: :string,
+    live: :boolean
+  ]
 
   @doc false
-  def run(args) do
+  def run(args, test_opts \\ []) do
     if Mix.Project.umbrella?() do
       Mix.raise("mix phx.gen.auth can only be run inside an application directory")
     end
@@ -96,18 +118,26 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
     context_args = OptionParser.to_argv(opts, switches: @switches) ++ parsed
 
     {context, schema} = Gen.Context.build(context_args, __MODULE__)
+
+    context = put_live_option(context)
+
     Gen.Context.prompt_for_code_injection(context)
 
-    # Needed so we can get the ecto adapter and ensure other
-    # libraries are loaded.
-    #
-    # As far as I can tell, everything after this must be tested with an
-    # integration test.
-    Mix.Task.run("compile")
+    if Keyword.get(test_opts, :validate_dependencies?, true) do
+      # Needed so we can get the ecto adapter and ensure other
+      # libraries are loaded.
+      Mix.Task.run("compile")
 
-    validate_required_dependencies!()
+      validate_required_dependencies!()
+    end
 
-    ecto_adapter = get_ecto_adapter!(schema)
+    ecto_adapter =
+      Keyword.get_lazy(
+        test_opts,
+        :ecto_adapter,
+        fn -> get_ecto_adapter!(schema) end
+      )
+
     migration = Migration.build(ecto_adapter)
 
     binding = [
@@ -116,11 +146,14 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
       migration: migration,
       hashing_library: hashing_library,
       web_app_name: web_app_name(context),
+      web_namespace: context.web_module,
       endpoint_module: Module.concat([context.web_module, Endpoint]),
-      auth_module: Module.concat([context.web_module, schema.web_namespace, "#{inspect(schema.alias)}Auth"]),
+      auth_module:
+        Module.concat([context.web_module, schema.web_namespace, "#{inspect(schema.alias)}Auth"]),
       router_scope: router_scope(context),
       web_path_prefix: web_path_prefix(schema),
-      test_case_options: test_case_options(ecto_adapter)
+      test_case_options: test_case_options(ecto_adapter),
+      live?: Keyword.fetch!(context.opts, :live)
     ]
 
     paths = generator_paths()
@@ -136,6 +169,7 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
     |> maybe_inject_router_import(binding)
     |> maybe_inject_router_plug()
     |> maybe_inject_app_layout_menu()
+    |> Gen.Notifier.maybe_print_mailer_installation_instructions()
     |> print_shell_instructions()
   end
 
@@ -181,7 +215,10 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
         hashing_library
 
       {:error, {:unknown_library, unknown_library}} ->
-        raise_with_help("Unknown value for --hashing-lib #{inspect(unknown_library)}", :hashing_lib)
+        raise_with_help(
+          "Unknown value for --hashing-lib #{inspect(unknown_library)}",
+          :hashing_lib
+        )
     end
   end
 
@@ -199,42 +236,177 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
   end
 
   defp files_to_be_generated(%Context{schema: schema, context_app: context_app} = context) do
-    web_prefix = Mix.Phoenix.web_path(context_app)
-    web_test_prefix = Mix.Phoenix.web_test_path(context_app)
-    migrations_prefix = Mix.Phoenix.context_app_path(context_app, "priv/repo/migrations")
+    singular = schema.singular
+    web_pre = Mix.Phoenix.web_path(context_app)
+    web_test_pre = Mix.Phoenix.web_test_path(context_app)
+    migrations_pre = Mix.Phoenix.context_app_path(context_app, "priv/repo/migrations")
     web_path = to_string(schema.web_path)
+    controller_pre = Path.join([web_pre, "controllers", web_path])
 
-    [
-      {:eex, "migration.ex", Path.join([migrations_prefix, "#{timestamp()}_create_#{schema.table}_auth_tables.exs"])},
-      {:eex, "notifier.ex", Path.join([context.dir, "#{schema.singular}_notifier.ex"])},
-      {:eex, "schema.ex", Path.join([context.dir, "#{schema.singular}.ex"])},
-      {:eex, "schema_token.ex", Path.join([context.dir, "#{schema.singular}_token.ex"])},
-      {:eex, "auth.ex", Path.join([web_prefix, "controllers", web_path, "#{schema.singular}_auth.ex"])},
-      {:eex, "auth_test.exs", Path.join([web_test_prefix, "controllers", web_path, "#{schema.singular}_auth_test.exs"])},
-      {:eex, "confirmation_view.ex", Path.join([web_prefix, "views", web_path, "#{schema.singular}_confirmation_view.ex"])},
-      {:eex, "confirmation_new.html.eex", Path.join([web_prefix, "templates", web_path, "#{schema.singular}_confirmation", "new.html.eex"])},
-      {:eex, "confirmation_controller.ex", Path.join([web_prefix, "controllers", web_path, "#{schema.singular}_confirmation_controller.ex"])},
-      {:eex, "confirmation_controller_test.exs", Path.join([web_test_prefix, "controllers", web_path, "#{schema.singular}_confirmation_controller_test.exs"])},
-      {:eex, "_menu.html.eex", Path.join([web_prefix, "templates", "layout", "_#{schema.singular}_menu.html.eex"])},
-      {:eex, "registration_new.html.eex", Path.join([web_prefix, "templates", web_path, "#{schema.singular}_registration", "new.html.eex"])},
-      {:eex, "registration_controller.ex", Path.join([web_prefix, "controllers", web_path, "#{schema.singular}_registration_controller.ex"])},
-      {:eex, "registration_controller_test.exs", Path.join([web_test_prefix, "controllers", web_path, "#{schema.singular}_registration_controller_test.exs"])},
-      {:eex, "registration_view.ex", Path.join([web_prefix, "views", web_path, "#{schema.singular}_registration_view.ex"])},
-      {:eex, "reset_password_view.ex", Path.join([web_prefix, "views", web_path, "#{schema.singular}_reset_password_view.ex"])},
-      {:eex, "reset_password_controller.ex", Path.join([web_prefix, "controllers", web_path, "#{schema.singular}_reset_password_controller.ex"])},
-      {:eex, "reset_password_controller_test.exs",
-       Path.join([web_test_prefix, "controllers", web_path, "#{schema.singular}_reset_password_controller_test.exs"])},
-      {:eex, "reset_password_edit.html.eex", Path.join([web_prefix, "templates", web_path, "#{schema.singular}_reset_password", "edit.html.eex"])},
-      {:eex, "reset_password_new.html.eex", Path.join([web_prefix, "templates", web_path, "#{schema.singular}_reset_password", "new.html.eex"])},
-      {:eex, "session_view.ex", Path.join([web_prefix, "views", web_path, "#{schema.singular}_session_view.ex"])},
-      {:eex, "session_controller.ex", Path.join([web_prefix, "controllers", web_path, "#{schema.singular}_session_controller.ex"])},
-      {:eex, "session_controller_test.exs", Path.join([web_test_prefix, "controllers", web_path, "#{schema.singular}_session_controller_test.exs"])},
-      {:eex, "session_new.html.eex", Path.join([web_prefix, "templates", web_path, "#{schema.singular}_session", "new.html.eex"])},
-      {:eex, "settings_view.ex", Path.join([web_prefix, "views", web_path, "#{schema.singular}_settings_view.ex"])},
-      {:eex, "settings_edit.html.eex", Path.join([web_prefix, "templates", web_path, "#{schema.singular}_settings", "edit.html.eex"])},
-      {:eex, "settings_controller.ex", Path.join([web_prefix, "controllers", web_path, "#{schema.singular}_settings_controller.ex"])},
-      {:eex, "settings_controller_test.exs", Path.join([web_test_prefix, "controllers", web_path, "#{schema.singular}_settings_controller_test.exs"])}
+    default_files = [
+      "migration.ex": [migrations_pre, "#{timestamp()}_create_#{schema.table}_auth_tables.exs"],
+      "notifier.ex": [context.dir, "#{singular}_notifier.ex"],
+      "schema.ex": [context.dir, "#{singular}.ex"],
+      "schema_token.ex": [context.dir, "#{singular}_token.ex"],
+      "auth.ex": [web_pre, web_path, "#{singular}_auth.ex"],
+      "auth_test.exs": [web_test_pre, web_path, "#{singular}_auth_test.exs"],
+      "session_controller.ex": [controller_pre, "#{singular}_session_controller.ex"],
+      "session_controller_test.exs": [
+        web_test_pre,
+        "controllers",
+        web_path,
+        "#{singular}_session_controller_test.exs"
+      ]
     ]
+
+    case Keyword.fetch(context.opts, :live) do
+      {:ok, true} ->
+        live_files = [
+          "registration_live.ex": [web_pre, "live", web_path, "#{singular}_registration_live.ex"],
+          "registration_live_test.exs": [
+            web_test_pre,
+            "live",
+            web_path,
+            "#{singular}_registration_live_test.exs"
+          ],
+          "login_live.ex": [web_pre, "live", web_path, "#{singular}_login_live.ex"],
+          "login_live_test.exs": [
+            web_test_pre,
+            "live",
+            web_path,
+            "#{singular}_login_live_test.exs"
+          ],
+          "reset_password_live.ex": [
+            web_pre,
+            "live",
+            web_path,
+            "#{singular}_reset_password_live.ex"
+          ],
+          "reset_password_live_test.exs": [
+            web_test_pre,
+            "live",
+            web_path,
+            "#{singular}_reset_password_live_test.exs"
+          ],
+          "forgot_password_live.ex": [
+            web_pre,
+            "live",
+            web_path,
+            "#{singular}_forgot_password_live.ex"
+          ],
+          "forgot_password_live_test.exs": [
+            web_test_pre,
+            "live",
+            web_path,
+            "#{singular}_forgot_password_live_test.exs"
+          ],
+          "settings_live.ex": [web_pre, "live", web_path, "#{singular}_settings_live.ex"],
+          "settings_live_test.exs": [
+            web_test_pre,
+            "live",
+            web_path,
+            "#{singular}_settings_live_test.exs"
+          ],
+          "confirmation_live.ex": [web_pre, "live", web_path, "#{singular}_confirmation_live.ex"],
+          "confirmation_live_test.exs": [
+            web_test_pre,
+            "live",
+            web_path,
+            "#{singular}_confirmation_live_test.exs"
+          ],
+          "confirmation_instructions_live.ex": [
+            web_pre,
+            "live",
+            web_path,
+            "#{singular}_confirmation_instructions_live.ex"
+          ],
+          "confirmation_instructions_live_test.exs": [
+            web_test_pre,
+            "live",
+            web_path,
+            "#{singular}_confirmation_instructions_live_test.exs"
+          ]
+        ]
+
+        remap_files(default_files ++ live_files)
+
+      _ ->
+        non_live_files = [
+          "confirmation_html.ex": [controller_pre, "#{singular}_confirmation_html.ex"],
+          "confirmation_new.html.heex": [
+            controller_pre,
+            "#{singular}_confirmation_html",
+            "new.html.heex"
+          ],
+          "confirmation_edit.html.heex": [
+            controller_pre,
+            "#{singular}_confirmation_html",
+            "edit.html.heex"
+          ],
+          "confirmation_controller.ex": [controller_pre, "#{singular}_confirmation_controller.ex"],
+          "confirmation_controller_test.exs": [
+            web_test_pre,
+            "controllers",
+            web_path,
+            "#{singular}_confirmation_controller_test.exs"
+          ],
+          "registration_new.html.heex": [
+            controller_pre,
+            "#{singular}_registration_html",
+            "new.html.heex"
+          ],
+          "registration_controller.ex": [controller_pre, "#{singular}_registration_controller.ex"],
+          "registration_controller_test.exs": [
+            web_test_pre,
+            "controllers",
+            web_path,
+            "#{singular}_registration_controller_test.exs"
+          ],
+          "registration_html.ex": [controller_pre, "#{singular}_registration_html.ex"],
+          "reset_password_html.ex": [controller_pre, "#{singular}_reset_password_html.ex"],
+          "reset_password_controller.ex": [
+            controller_pre,
+            "#{singular}_reset_password_controller.ex"
+          ],
+          "reset_password_controller_test.exs": [
+            web_test_pre,
+            "controllers",
+            web_path,
+            "#{singular}_reset_password_controller_test.exs"
+          ],
+          "reset_password_edit.html.heex": [
+            controller_pre,
+            "#{singular}_reset_password_html",
+            "edit.html.heex"
+          ],
+          "reset_password_new.html.heex": [
+            controller_pre,
+            "#{singular}_reset_password_html",
+            "new.html.heex"
+          ],
+          "session_html.ex": [controller_pre, "#{singular}_session_html.ex"],
+          "session_new.html.heex": [controller_pre, "#{singular}_session_html", "new.html.heex"],
+          "settings_html.ex": [web_pre, "controllers", web_path, "#{singular}_settings_html.ex"],
+          "settings_controller.ex": [controller_pre, "#{singular}_settings_controller.ex"],
+          "settings_edit.html.heex": [
+            controller_pre,
+            "#{singular}_settings_html",
+            "edit.html.heex"
+          ],
+          "settings_controller_test.exs": [
+            web_test_pre,
+            "controllers",
+            web_path,
+            "#{singular}_settings_controller_test.exs"
+          ]
+        ]
+
+        remap_files(default_files ++ non_live_files)
+    end
+  end
+
+  defp remap_files(files) do
+    for {source, dest} <- files, do: {:eex, to_string(source), Path.join(dest)}
   end
 
   defp copy_new_files(%Context{} = context, binding, paths) do
@@ -248,34 +420,33 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
   end
 
   defp inject_context_functions(%Context{file: file} = context, paths, binding) do
-    unless Context.pre_existing?(context) do
-      Mix.Generator.create_file(file, Mix.Phoenix.eval_from(paths, "priv/templates/phx.gen.context/context.ex", binding))
-    end
+    Gen.Context.ensure_context_file_exists(context, paths, binding)
 
     paths
     |> Mix.Phoenix.eval_from("priv/templates/phx.gen.auth/context_functions.ex", binding)
+    |> prepend_newline()
     |> inject_before_final_end(file)
   end
 
   defp inject_tests(%Context{test_file: test_file} = context, paths, binding) do
-    unless Context.pre_existing_tests?(context) do
-      Mix.Generator.create_file(test_file, Mix.Phoenix.eval_from(paths, "priv/templates/phx.gen.context/context_test.exs", binding))
-    end
+    Gen.Context.ensure_test_file_exists(context, paths, binding)
 
     paths
     |> Mix.Phoenix.eval_from("priv/templates/phx.gen.auth/test_cases.exs", binding)
+    |> prepend_newline()
     |> inject_before_final_end(test_file)
   end
 
-  defp inject_context_test_fixtures(%Context{} = context, paths, binding) do
-    test_fixtures_file = get_test_fixtures_file(context)
-
-    unless pre_exisiting_test_fixtures?(context) do
-      Mix.Generator.create_file(test_fixtures_file, Mix.Phoenix.eval_from(paths, "priv/templates/phx.gen.auth/context_fixtures.ex", binding))
-    end
+  defp inject_context_test_fixtures(
+         %Context{test_fixtures_file: test_fixtures_file} = context,
+         paths,
+         binding
+       ) do
+    Gen.Context.ensure_test_fixtures_file_exists(context, paths, binding)
 
     paths
     |> Mix.Phoenix.eval_from("priv/templates/phx.gen.auth/context_fixtures_functions.ex", binding)
+    |> prepend_newline()
     |> inject_before_final_end(test_fixtures_file)
   end
 
@@ -300,7 +471,9 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
     context
   end
 
-  defp maybe_inject_mix_dependency(%Context{context_app: ctx_app} = context, %HashingLibrary{mix_dependency: mix_dependency}) do
+  defp maybe_inject_mix_dependency(%Context{context_app: ctx_app} = context, %HashingLibrary{
+         mix_dependency: mix_dependency
+       }) do
     file_path = Mix.Phoenix.context_app_path(ctx_app, "mix.exs")
 
     file = File.read!(file_path)
@@ -316,7 +489,7 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
       {:error, :unable_to_inject} ->
         Mix.shell().info("""
 
-        Add your #{inspect(mix_dependency)} dependency to #{file_path}:
+        Add your #{mix_dependency} dependency to #{file_path}:
 
             defp deps do
               [
@@ -351,7 +524,12 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
     """
 
     with {:ok, file} <- read_file(file_path),
-         {:ok, new_file} <- Injector.inject_unless_contains(file, inject, &String.replace(&1, use_line, "#{use_line}\n\n  #{&2}")) do
+         {:ok, new_file} <-
+           Injector.inject_unless_contains(
+             file,
+             inject,
+             &String.replace(&1, use_line, "#{use_line}\n\n  #{&2}")
+           ) do
       print_injecting(file_path, " - imports")
       File.write!(file_path, new_file)
     else
@@ -403,12 +581,10 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
     schema = context.schema
 
     if file_path = get_layout_html_path(context) do
-      file = File.read!(file_path)
-
-      case Injector.app_layout_menu_inject(file, schema) do
-        {:ok, new_file} ->
+      case Injector.app_layout_menu_inject(schema, File.read!(file_path)) do
+        {:ok, new_content} ->
           print_injecting(file_path)
-          File.write!(file_path, new_file)
+          File.write!(file_path, new_content)
 
         :already_injected ->
           :ok
@@ -420,29 +596,27 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
           """)
       end
     else
-      menu_name = Injector.app_layout_menu_template_name(schema)
-      inject = Injector.app_layout_menu_code_to_inject(schema)
+      {_dup, inject} = Injector.app_layout_menu_code_to_inject(schema)
+
+      missing =
+        context
+        |> potential_layout_file_paths()
+        |> Enum.map_join("\n", &"  * #{&1}")
 
       Mix.shell().error("""
 
-      Unable to find an application layout file to inject a render
-      call for #{inspect(menu_name)}.
+      Unable to find an application layout file to inject user menu items.
 
       Missing files:
 
-      #{
-        context
-        |> potential_layout_file_paths()
-        |> Enum.map(&"  * #{&1}")
-        |> Enum.join("\n")
-      }
+      #{missing}
 
       Please ensure this phoenix app was not generated with
       --no-html. If you have changed the name of your application
       layout file, please add the following code to it where you'd
-      like #{inspect(menu_name)} to be rendered.
+      like the #{schema.singular} menu items to be rendered.
 
-          #{inject}
+      #{inject}
       """)
     end
 
@@ -458,8 +632,8 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
   defp potential_layout_file_paths(%Context{context_app: ctx_app}) do
     web_prefix = Mix.Phoenix.web_path(ctx_app)
 
-    for file_name <- ~w(root.html.leex app.html.eex) do
-      Path.join([web_prefix, "templates", "layout", file_name])
+    for file_name <- ~w(root.html.heex app.html.heex) do
+      Path.join([web_prefix, "components", "layouts", file_name])
     end
   end
 
@@ -503,14 +677,15 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
 
     Please re-fetch your dependencies with the following command:
 
-        mix deps.get
-    """)
-
-    Mix.shell().info("""
+        $ mix deps.get
 
     Remember to update your repository by running migrations:
 
-      $ mix ecto.migrate
+        $ mix ecto.migrate
+
+    Once you are ready, visit "/#{context.schema.plural}/register"
+    to create your account and then access "/dev/mailbox" to
+    see the account confirmation email.
     """)
 
     context
@@ -569,27 +744,13 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
     end
   end
 
-  # This can be replaced with Context.pre_exisiting_test_fixtures?/1
-  # in phoenix 1.6
-  defp pre_exisiting_test_fixtures?(%Context{} = context) do
-    context |> get_test_fixtures_file() |> File.exists?()
-  end
-
-  # This can be updated to use %Context{test_fixtures_file: _} in
-  # Phoenix 1.6
-  defp get_test_fixtures_file(%Context{name: context_name, context_app: ctx_app}) do
-    basedir = Phoenix.Naming.underscore(context_name)
-    test_fixtures_dir = Mix.Phoenix.context_app_path(ctx_app, "test/support/fixtures")
-    Path.join([test_fixtures_dir, basedir <> "_fixtures.ex"])
-  end
-
-  defp indent_spaces(string, number_of_spaces) when is_binary(string) and is_integer(number_of_spaces) do
+  defp indent_spaces(string, number_of_spaces)
+       when is_binary(string) and is_integer(number_of_spaces) do
     indent = String.duplicate(" ", number_of_spaces)
 
     string
     |> String.split("\n")
-    |> Enum.map(&(indent <> &1))
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", &(indent <> &1))
   end
 
   defp timestamp do
@@ -599,6 +760,8 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
 
   defp pad(i) when i < 10, do: <<?0, ?0 + i>>
   defp pad(i), do: to_string(i)
+
+  defp prepend_newline(string) when is_binary(string), do: "\n" <> string
 
   defp get_ecto_adapter!(%Schema{repo: repo}) do
     if Code.ensure_loaded?(repo) do
@@ -658,7 +821,7 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
         mix phx.new my_app --umbrella
         mix phx.new my_app --database mysql
 
-    Apps generated with --no-ecto and --no-html are not supported.
+    Apps generated with --no-ecto or --no-html are not supported.
     """)
   end
 
@@ -679,4 +842,27 @@ defmodule Mix.Tasks.Phx.Gen.Auth do
 
   defp test_case_options(Ecto.Adapters.Postgres), do: ", async: true"
   defp test_case_options(adapter) when is_atom(adapter), do: ""
+
+  defp put_live_option(schema) do
+    opts =
+      case Keyword.fetch(schema.opts, :live) do
+        {:ok, _live?} ->
+          schema.opts
+
+        _ ->
+          Mix.shell().info("""
+          An authentication system can be created in two different ways:
+          - Using Phoenix.LiveView (default)
+          - Using Phoenix.Controller only\
+          """)
+
+          if Mix.shell().yes?("Do you want to create a LiveView based authentication system?") do
+            Keyword.put_new(schema.opts, :live, true)
+          else
+            Keyword.put_new(schema.opts, :live, false)
+          end
+      end
+
+    Map.put(schema, :opts, opts)
+  end
 end

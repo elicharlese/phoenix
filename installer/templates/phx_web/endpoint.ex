@@ -7,14 +7,11 @@ defmodule <%= @endpoint_module %> do
   @session_options [
     store: :cookie,
     key: "_<%= @web_app_name %>_key",
-    signing_salt: "<%= @signing_salt %>"
+    signing_salt: "<%= @signing_salt %>",
+    same_site: "Lax"
   ]
 
-  socket "/socket", <%= @web_namespace %>.UserSocket,
-    websocket: true,
-    longpoll: false<%= if @live || @dashboard do %>
-
-  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]<% end %>
+  <%= if !(@dashboard || @live) do %><%= "# " %><% end %>socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -24,7 +21,7 @@ defmodule <%= @endpoint_module %> do
     at: "/",
     from: :<%= @web_app_name %>,
     gzip: false,
-    only: ~w(css fonts images js favicon.ico robots.txt)
+    only: <%= @web_namespace %>.static_paths()
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.

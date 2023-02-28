@@ -1,111 +1,117 @@
 name: CI
 on: [push, pull_request]
+permissions:
+  contents: read
+
 jobs:
-  test-elixir:
-    runs-on: ubuntu-latest
-    container:
-      image: hexpm/elixir:${{ matrix.elixir }}-erlang-${{ matrix.otp }}-alpine-3.12.0
-      env:
-        ELIXIR_ASSERT_TIMEOUT: 2000
+  mix_test:
+    name: mix test (OTP ${{matrix.otp}} | Elixir ${{matrix.elixir}})
+
+    env:
+      MIX_ENV: test
 
     strategy:
-      fail-fast: false
-      max-parallel: 1
       matrix:
         include:
-          - elixir: 1.9.4
-            otp: 20.3.8.26
-          - elixir: 1.10.4
-            otp: 23.1.1
-          - elixir: 1.11.0
-            otp: 21.3.8.18
-          - elixir: 1.11.0
-            otp: 23.1.1
-    steps:
-      - uses: actions/checkout@v2.3.1
-      - name: Install Dependencies
-        run: |
-          mix local.rebar --force
-          mix local.hex --force
-          apk add --no-progress --update git
-          mix deps.get --only test
-      - run: mix test
+          - elixir: 1.12.0
+            otp: 22.3
 
-  integration-test-elixir:
-    runs-on: ubuntu-latest
-    container:
-      image: hexpm/elixir:${{ matrix.elixir }}-erlang-${{ matrix.otp }}-alpine-3.12.0
-      env:
-        ELIXIR_ASSERT_TIMEOUT: 2000
-    services:
-      postgres:
-        image: postgres
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_PASSWORD: postgres
-      mysql:
-        image: mysql
-        ports:
-          - 3306:3306
-        env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-      mssql:
-        image: mcr.microsoft.com/mssql/server:2019-latest
-        env:
-          ACCEPT_EULA: Y
-          SA_PASSWORD: some!Password
-        ports:
-          - 1433:1433
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - elixir: 1.11.1
-            otp: 21.3.8.18
-          - elixir: 1.11.1
-            otp: 23.1.1
+          - elixir: 1.14.3
+            otp: 25.1
+            lint: true
+            installer: true
+
+    runs-on: ubuntu-20.04
+
     steps:
-      - uses: actions/checkout@v2.3.1
-      - name: Install Dependencies
-        run: |
-          mix local.rebar --force
-          mix local.hex --force
-          apk add --no-progress --update git socat make gcc libc-dev
-      - name: Set up local proxies
-        run: |
-          socat TCP-LISTEN:5432,fork TCP-CONNECT:postgres:5432&
-          socat TCP-LISTEN:3306,fork TCP-CONNECT:mysql:3306&
-          socat TCP-LISTEN:1433,fork TCP-CONNECT:mssql:1433&
-      - name: Run installer tests
-        run: mix test
-        working-directory: installer
-      - name: Install dependencies
-        run: mix deps.get
-        working-directory: integration_test
-      - name: Run integration tests
-        run: mix test --include database
-        working-directory: integration_test
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: ${{ matrix.elixir }}
+        otp-version: ${{ matrix.otp }}
+
+    - name: Restore deps and _build cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          deps
+          _build
+        key: deps-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('**/mix.lock') }}
+        restore-keys: |
+          deps-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}
+
+    - name: Install dependencies
+      run: mix deps.get --only test
+
+    - name: Remove compiled application files
+      run: mix clean
+
+    - name: Compile & lint dependencies
+      run: mix compile --warnings-as-errors
+      if: ${{ matrix.lint }}
+
+    - name: Run tests
+      run: mix test
+
+    - name: Run installer test
+      run: |
+        cd installer
+        mix test
+      if: ${{ matrix.installer }}
 
   npm_test:
+    name: npm test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2.3.1
-      - uses: actions/setup-elixir@v1
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Restore deps and _build cache
+        uses: actions/cache@v3
         with:
-          otp-version: 23.0.3
-          elixir-version: 1.10.4
-      - name: Install Dependencies
-        run: |
-          mix local.rebar --force
-          mix local.hex --force
-          mix deps.get
-      - name: Setup Node.js
-        uses: actions/setup-node@v1
+          path: |
+            deps
+            _build
+          key: deps-${{ runner.os }}-npm-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            deps-${{ runner.os }}-npm
+
+      - name: Set up Node.js 12.x
+        uses: actions/setup-node@v3
         with:
-          node-version: 12.16
+          node-version: 12.x
+
+      - name: Restore npm cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
       - name: npm install and test
         run: |
           cd assets
           npm install
           npm test
+
+  integration-test-elixir:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_COLOR: 1
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - elixir: 1.14.0
+            otp: 24.3.4
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download released earth
+        run: "sudo /bin/sh -c 'wget https://github.com/earthly/earthly/releases/download/v0.5.16/earthly-linux-amd64 -O /usr/local/bin/earthly && chmod +x /usr/local/bin/earthly'"
+      - name: Execute tests
+        run: earthly -P --build-arg ELIXIR=${{ matrix.elixir }} --build-arg OTP=${{ matrix.otp }} +integration-test

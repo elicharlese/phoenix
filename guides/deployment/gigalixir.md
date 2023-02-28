@@ -10,7 +10,7 @@ Our main goal for this guide is to get a Phoenix application running on Gigalixi
 
 ## Steps
 
-Let's separate this process into a few steps so we can keep track of where we are.
+Let's separate this process into a few steps, so we can keep track of where we are.
 
 - Initialize Git repository
 - Install the Gigalixir CLI
@@ -23,7 +23,7 @@ Let's separate this process into a few steps so we can keep track of where we ar
 
 ## Initializing Git repository
 
-If you haven't already, we'll need to commit our files git. We can do so by running the following commands in our project directory:
+If you haven't already, we'll need to commit our files to git. We can do so by running the following commands in our project directory:
 
 ```console
 $ git init
@@ -43,7 +43,7 @@ We can sign up for an account at [gigalixir.com](https://www.gigalixir.com) or w
 $ gigalixir signup
 ```
 
-Gigalixir’s free tier does not require a credit card and comes with 1 app instance and 1 postgresql database for free, but please consider upgrading to a paid plan if you are running a production application.
+Gigalixir’s free tier does not require a credit card and comes with 1 app instance and 1 PostgreSQL database for free, but please consider upgrading to a paid plan if you are running a production application.
 
 Next, let's login
 
@@ -66,10 +66,12 @@ There are three different ways to deploy a Phoenix app on Gigalixir: with mix, w
 Let's create a Gigalixir application
 
 ```console
-$ gigalixir create
+$ gigalixir create -n "your_app_name"
 ```
 
-Verify it was created
+Note: the app name cannot be changed afterwards. A random name is used if you do not provide one.
+
+Verify the app was created
 
 ```console
 $ gigalixir apps
@@ -83,23 +85,34 @@ $ git remote -v
 
 ### Specifying versions
 
-The buildpacks we use default to Elixir, Erlang, and Nodejs versions that are quite old and it's generally a good idea to run the same version in production as you do in development, so let's do that.
+The buildpacks we use default to Elixir, Erlang, and Node.js versions that are quite old and it's generally a good idea to run the same version in production as you do in development, so let's do that.
 
 ```console
-$ echo "elixir_version=1.10.3" > elixir_buildpack.config
-$ echo "erlang_version=22.3" >> elixir_buildpack.config
-$ echo "node_version=12.16.3" > phoenix_static_buildpack.config
+$ echo 'elixir_version=1.14.3' > elixir_buildpack.config
+$ echo 'erlang_version=24.3' >> elixir_buildpack.config
+$ echo 'node_version=12.16.3' > phoenix_static_buildpack.config
 ```
 
-Don't forget to commit
+Phoenix v1.6 uses `esbuild` to compile your assets, but all Gigalixir images come with `npm`, so we will configure `npm` directly to deploy our assets. Add a `assets/package.json` file if you don't have any with the following:
+
+```json
+{
+  "scripts": {
+    "deploy": "cd .. && mix assets.deploy && rm -f _build/esbuild*"
+  }
+}
+```
+
+Finally, don't forget to commit:
 
 ```console
-$ git add elixir_buildpack.config phoenix_static_buildpack.config
-$ git commit -m "set elixir, erlang, and node version"
+$ git add elixir_buildpack.config phoenix_static_buildpack.config assets/package.json
+$ git commit -m "Set Elixir, Erlang, and Node version"
 ```
+
 ## Making our Project ready for Gigalixir
 
-There's nothing we need to do to get our app running on Giglaixir, but for a production app, you probably want to enforce SSL. To do that, see [Force SSL](https://hexdocs.pm/phoenix/using_ssl.html#force-ssl)
+There's nothing we need to do to get our app running on Gigalixir, but for a production app, you probably want to enforce SSL. To do that, see [Force SSL](https://hexdocs.pm/phoenix/using_ssl.html#force-ssl)
 
 You may also want to use SSL for your database connection. For that, uncomment the line `ssl: true` in your `Repo` config.
 
