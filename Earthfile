@@ -1,3 +1,10 @@
+run-all-tests-in-ci:
+  PIPELINE
+  TRIGGER manual
+  TRIGGER pr master
+  TRIGGER push master
+  BUILD +all
+
 all:
     BUILD +all-integration-test
 
