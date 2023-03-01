@@ -38,7 +38,7 @@ defmodule Phoenix.CodeReloaderTest do
     wait_until_is_up(Phoenix.CodeReloader.Server)
   end
 
-  test "reloads on every request" do
+  test "reload on every request" do
     pid = Process.whereis(Phoenix.CodeReloader.Server)
     :erlang.trace(pid, true, [:receive])
 
