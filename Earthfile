@@ -1,3 +1,6 @@
+VERSION 0.7
+PROJECT jalletto/phoenix
+
 run-all-tests-in-ci:
   PIPELINE
   TRIGGER manual
