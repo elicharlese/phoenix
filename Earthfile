@@ -16,7 +16,7 @@ all-integration-test:
 
 integration-test:
     FROM +setup-base
-
+    RUN echo hello
     RUN apk add --no-progress --update docker docker-compose
 
     # Install tooling needed to check if the DBs are actually up when performing integration tests
