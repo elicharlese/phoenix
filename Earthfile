@@ -16,7 +16,7 @@ all-integration-test:
 
 integration-test:
     FROM +setup-base
-    RUN echo hello
+
     RUN apk add --no-progress --update docker docker-compose
 
     # Install tooling needed to check if the DBs are actually up when performing integration tests
@@ -29,13 +29,13 @@ integration-test:
     ENV PATH="/opt/mssql-tools/bin:${PATH}"
 
     # Integration test deps
-    COPY /integration_test/docker-compose.yml ./integration_test/docker-compose.yml
-    COPY mix.exs ./
-    COPY /.formatter.exs ./
-    COPY /installer/mix.exs ./installer/mix.exs
-    COPY /integration_test/mix.exs ./integration_test/mix.exs
-    COPY /integration_test/mix.lock ./integration_test/mix.lock
-    COPY /integration_test/config/config.exs ./integration_test/config/config.exs
+    COPY ./integration_test/docker-compose.yml ./integration_test/docker-compose.yml
+    COPY ./mix.exs ./
+    COPY ./.formatter.exs ./
+    COPY ./installer/mix.exs ./installer/mix.exs
+    COPY ./integration_test/mix.exs ./integration_test/mix.exs
+    COPY ./integration_test/mix.lock ./integration_test/mix.lock
+    COPY ./integration_test/config/config.exs ./integration_test/config/config.exs
     WORKDIR /src/integration_test
     RUN mix local.hex --force
 
@@ -54,8 +54,8 @@ integration-test:
     # RUN MIX_ENV=test mix deps.compile
 
     # Run integration tests
-    COPY integration_test/test  ./test
-    COPY integration_test/config/config.exs  ./config/config.exs
+    COPY ./integration_test/test  ./test
+    COPY ./integration_test/config/config.exs  ./config/config.exs
 
     WITH DOCKER
         # Start docker compose
