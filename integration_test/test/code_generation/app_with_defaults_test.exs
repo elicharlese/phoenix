@@ -93,7 +93,7 @@ defmodule Phoenix.Integration.CodeGeneration.AppWithDefaultsTest do
     end
 
     @tag database: :postgresql
-    test "has a passing test suite" do
+    test "has passing test suite" do
       with_installer_tmp("app_with_defaults", fn tmp_dir ->
         {app_root_path, _} = generate_phoenix_app(tmp_dir, "phx_blog")
 
